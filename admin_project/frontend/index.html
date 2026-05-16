@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>لوحة التحكم - طلبات الخروج</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="admin_styles.css" />
+</head>
+
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <span class="brand">لوحة تحكم طلبات الالتماس </span>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section id="listView">
+      <header class="section-header">
+        <h2>قائمة الطلبات المستلمة</h2>
+        <button id="refreshBtn" class="btn-refresh">
+          <span>↺</span> تحديث
+        </button>
+      </header>
+
+      <!-- Filters bar -->
+      <div class="filters-bar">
+        <!-- Search at the top (full width) -->
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" class="search-input"
+            placeholder="ابحث بالاسم، رقم الطلب، أو الرقم العسكري..." />
+        </div>
+
+        <!-- Filters row below -->
+        <div class="filters-row">
+          <div class="filter-group">
+            <label class="filter-label" for="filterType">نوع الطلب</label>
+            <div class="select-wrapper">
+              <select id="filterType" class="filter-select">
+                <option value="">الكل</option>
+                <option value="external">خارجي</option>
+                <option value="internal">داخلي</option>
+              </select>
+              <span class="select-arrow">▾</span>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="filterStatus">الحالة</label>
+            <div class="select-wrapper">
+              <select id="filterStatus" class="filter-select">
+                <option value="">الكل</option>
+                <option value="pending">قيد الانتظار</option>
+                <option value="approved">موافق عليه</option>
+                <option value="declined">مرفوض</option>
+              </select>
+              <span class="select-arrow">▾</span>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="filterDate">تاريخ التقديم</label>
+            <input type="date" id="filterDate" class="filter-date" />
+          </div>
+
+          <div style="flex: 1"></div> <!-- Spacer -->
+
+          <button id="clearFiltersBtn" class="btn-clear" type="button">مسح الفلاتر</button>
+        </div>
+      </div>
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>رقم الطلب</th>
+              <th>النوع</th>
+              <th>اسم الطالب</th>
+              <th>تاريخ التقديم</th>
+              <th>تاريخ الخروج</th>
+              <th>الحالة</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="petitionsList">
+            <!-- JS dynamic rows -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="detailView" class="hidden">
+      <button class="back-btn" id="backBtn">← العودة للقائمة</button>
+      <div class="grid">
+        <div class="card">
+          <h3>بيانات الطالب والطلب</h3>
+          <div id="petitionDetails">
+            <!-- JS dynamic details -->
+          </div>
+        </div>
+        <div class="card">
+          <h3>المرفقات والمستندات</h3>
+          <div id="fileLinks">
+            <!-- JS dynamic links -->
+          </div>
+        </div>
+      </div>
+
+      <div class="card decision-card">
+        <h3>اتخاذ قرار</h3>
+        <form id="decisionForm">
+          <div class="decision-options">
+            <label class="radio-option">
+              <input type="radio" name="status" value="approved" required />
+              <span class="label-text">موافقة (Approve)</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="status" value="declined" required />
+              <span class="label-text">رفض (Decline)</span>
+            </label>
+          </div>
+          <div class="field">
+            <label for="admin_name">اسم المسؤول (مطلوب)</label>
+            <input type="text" id="admin_name" name="admin_name" required placeholder="أدخل اسمك هنا..." />
+          </div>
+          <div class="field">
+            <label for="admin_notes">ملاحظات إضافية (اختياري)</label>
+            <textarea id="admin_notes" name="admin_notes" rows="3"></textarea>
+          </div>
+          <button type="submit" id="submitDecisionBtn">حفظ القرار وإعادة توليد المستندات</button>
+        </form>
+      </div>
+      <div class="card history-card">
+        <h3>سجل تحركات الطلب</h3>
+        <div id="petitionHistory" class="timeline">
+          <!-- JS dynamic history -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="loading" class="overlay hidden">
+    <div class="spinner"></div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+
+</html>
