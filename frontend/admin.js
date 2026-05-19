@@ -83,7 +83,6 @@ function renderList(petitions) {
     const isInternal = p.petition_type === "internal";
     const typeLabel = isInternal ? "<span class='badge' style='background:#6c757d'>داخلي</span>" : "<span class='badge' style='background:#0d6efd'>خارجي</span>";
     
-    const exitDateStr = p.exit_datetime ? new Date(p.exit_datetime).toLocaleDateString("ar-EG") : "-";
     const submissionDateStr = p.submitted_date || "-";
 
     tr.innerHTML = `
@@ -91,7 +90,6 @@ function renderList(petitions) {
       <td>${typeLabel}</td>
       <td>${p.student_name_ar}</td>
       <td>${submissionDateStr}</td>
-      <td>${exitDateStr}</td>
       <td><span class="badge badge-${p.status}">${getStatusLabel(p.status)}</span></td>
       <td><button class="view-btn" onclick="viewDetails('${p.id}')">عرض</button></td>
     `;
@@ -123,14 +121,20 @@ async function viewDetails(id) {
   }
 }
 
-async function handlePrint(id, pdfUrl, attachments, existingAdmin) {
+async function handlePrint(id, pdfUrl, attachments) {
   const includeAttachments = document.getElementById('includeAttachments').checked;
-  let adminName = existingAdmin || document.getElementById('admin_name').value;
+  const printAdminInput = document.getElementById('print_admin_name');
+  const decisionAdminInput = document.getElementById('admin_name');
+  
+  let adminName = (printAdminInput ? printAdminInput.value.trim() : "") || (decisionAdminInput ? decisionAdminInput.value.trim() : "");
   
   if (!adminName) {
-    adminName = prompt("يرجى إدخال اسم المسؤول لتسجيل عملية الطباعة:");
+    alert("يرجى إدخال اسم المسؤول في خانة الطباعة قبل الطباعة.");
+    if (printAdminInput) printAdminInput.focus();
+    return;
   }
-  if (!adminName) return;
+
+  showLoading(true);
 
   try {
     const notes = includeAttachments ? "تمت الطباعة مع المرفقات" : "تمت الطباعة بدون مرفقات";
@@ -140,30 +144,101 @@ async function handlePrint(id, pdfUrl, attachments, existingAdmin) {
       body: JSON.stringify({ admin_name: adminName, action: 'printed', notes: notes })
     });
 
-    // 1. Open the PDF file for printing (PDF is the only format that supports direct browser printing)
+    const docsToMerge = [];
     if (pdfUrl) {
-      // Adding #toolbar=0 can sometimes help, but opening it is the main step
-      const printWin = window.open(pdfUrl, '_blank');
-      // Note: Auto-triggering print() on a cross-origin PDF is often blocked, 
-      // but the user will see the PDF and can press Ctrl+P or use the print icon.
-    } else {
-      alert("ملف PDF غير متوفر لهذا الطلب حالياً.");
+      docsToMerge.push({ url: pdfUrl, ext: 'pdf' });
     }
 
-    // 2. Open attachments if toggled
     if (includeAttachments && attachments && attachments.length > 0) {
-      attachments.forEach((att, idx) => {
-        setTimeout(() => {
-          window.open(att.signed_url, '_blank');
-        }, (idx + 1) * 400);
+      attachments.forEach(att => {
+        let urlWithoutQuery = att.signed_url.split('?')[0];
+        let ext = urlWithoutQuery.split('.').pop().toLowerCase();
+        
+        if (!['jpg', 'jpeg', 'png', 'pdf'].includes(ext)) {
+            const origExt = (att.original_name || "").split('.').pop().toLowerCase();
+            if (['jpg', 'jpeg', 'png', 'pdf'].includes(origExt)) {
+                ext = origExt;
+            }
+        }
+        
+        if (['jpg', 'jpeg', 'png', 'pdf'].includes(ext)) {
+            docsToMerge.push({ url: att.signed_url, ext: ext });
+        }
       });
     }
 
+    if (docsToMerge.length === 0) {
+      alert("لا توجد مستندات قابلة للطباعة.");
+      showLoading(false);
+      return;
+    }
+
+    // Merge them into a single PDF
+    const mergedPdf = await PDFLib.PDFDocument.create();
+
+    for (const doc of docsToMerge) {
+      try {
+        const res = await fetch(doc.url);
+        if (!res.ok) continue;
+        const arrayBuffer = await res.arrayBuffer();
+
+        if (doc.ext === 'pdf') {
+          const pdfToMerge = await PDFLib.PDFDocument.load(arrayBuffer);
+          const copiedPages = await mergedPdf.copyPages(pdfToMerge, pdfToMerge.getPageIndices());
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+        } else if (doc.ext === 'png') {
+          const image = await mergedPdf.embedPng(arrayBuffer);
+          const dims = image.scale(1);
+          const page = mergedPdf.addPage([dims.width, dims.height]);
+          page.drawImage(image, { x: 0, y: 0, width: dims.width, height: dims.height });
+        } else if (doc.ext === 'jpg' || doc.ext === 'jpeg') {
+          const image = await mergedPdf.embedJpg(arrayBuffer);
+          const dims = image.scale(1);
+          const page = mergedPdf.addPage([dims.width, dims.height]);
+          page.drawImage(image, { x: 0, y: 0, width: dims.width, height: dims.height });
+        }
+      } catch (err) {
+        console.error("Failed to merge document:", doc.url, err);
+      }
+    }
+
+    const mergedPdfBytes = await mergedPdf.save();
+    const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    showLoading(false);
+
+    // Print the merged document
+    printMergedPdf(blobUrl);
     viewDetails(id);
+
   } catch (err) {
+    showLoading(false);
     console.error(err);
-    alert("فشل تسجيل عملية الطباعة");
+    alert("فشل عملية دمج أو طباعة المستندات");
   }
+}
+
+function printMergedPdf(blobUrl) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0px';
+  iframe.style.height = '0px';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
+
+  iframe.src = blobUrl;
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }, 800);
+  };
+  
+  setTimeout(() => {
+    document.body.removeChild(iframe);
+    URL.revokeObjectURL(blobUrl);
+  }, 30000);
 }
 
 function renderDetails(p) {
@@ -190,25 +265,26 @@ function renderDetails(p) {
     <div class="detail-row"><span>تاريخ التقديم:</span> ${p.submitted_date || "-"}</div>
   `;
 
-  // -- Print Controls (Hidden for now) --------------------------
-  /*
+  // -- Print Controls --------------------------
   fileLinks.innerHTML = `
     <div class="print-actions-card">
       <h4>إجراءات الطباعة</h4>
+      <div class="field" style="margin-bottom: 1rem;">
+        <label for="print_admin_name" style="font-size: 0.9rem; color: #475569;">اسم المسؤول (للطباعة)</label>
+        <input type="text" id="print_admin_name" value="${p.decided_by || ''}" placeholder="أدخل اسمك هنا..." class="search-input" style="padding: 8px 12px; font-size: 14px;" />
+      </div>
       <div class="print-controls">
         <label class="switch-container">
           <input type="checkbox" id="includeAttachments" />
           <span class="switch-slider"></span>
           <span class="switch-label">تشمل المرفقات</span>
         </label>
-        <button class="print-primary-btn" onclick="handlePrint('${p.id}', '${p.signed_pdf_url || ''}', ${JSON.stringify(p.attachments || []).replace(/"/g, '&quot;')}, '${p.decided_by || ''}')">
+        <button class="print-primary-btn" onclick="handlePrint('${p.id}', '${p.signed_pdf_url || ''}', ${JSON.stringify(p.attachments || []).replace(/"/g, '&quot;')})">
           طباعة الطلب 🖨️
         </button>
       </div>
     </div>
   `;
-  */
-  fileLinks.innerHTML = ""; // Clear or initialize
 
   fileLinks.innerHTML += "<h4>المستندات المنشأة</h4>";
   if (p.signed_pdf_url) {
